@@ -1,5 +1,6 @@
 const EventModel = require('../models/eventModel');
 const Moment = require('moment');
+const ExcelExportService = require('../service/exportFileService');
 
 exports.getAllEvents = async (req, res) => {
   const events = await EventModel.find().populate({
@@ -21,14 +22,35 @@ exports.getEventById = async (req, res) => {
 
 exports.getEventExportById = async (req, res) => {
   const { id } = req.params;
-  const event = await EventModel.findById(id).populate({
+  const event = await EventModel.findById(id).select('membersAttendance name startDate -_id').populate({
     path: 'membersAttendance',
+    select: 'member timeIn timeOut -_id',
+    options: { sort: { timeIn: 'asc' } },
     populate: {
-      path: 'member', select: 'name'
+      path: 'member', select: 'name -_id'
     }
-  }).sort();
+  });
 
-  res.send(event);
+  const fileName = `${event.name}-${Moment(event.startDate, 'MM/DD/YYYY').format('MM_DD_YYYY')}`;
+  const filePath = 'exportPath';
+
+  const resultSet = [];
+
+  for (const key in event.membersAttendance) {
+    resultSet.push({
+      'Member Name': event.membersAttendance[key].member.name,
+      'Time-In': event.membersAttendance[key].timeIn,
+      'Time-out': event.membersAttendance[key].timeOut
+    });
+  }
+
+  const exportServiceXlsx = new ExcelExportService(fileName, filePath);
+  exportServiceXlsx.export(resultSet);
+
+  const path = require('path');
+  const completePath = path.join(__dirname, `../${filePath}`, `${fileName}.xlsx`);
+
+  res.download(completePath);
 };
 
 exports.getEventSearch = async (req, res, next) => {
